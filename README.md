@@ -1,308 +1,120 @@
-# Multi-Tenant AI Chatbot Platform
+# Chatbot Platform
 
-A production-inspired chatbot platform built with **FastAPI**, **JWT Authentication**, **SQLAlchemy**, and **OpenRouter**.
+A minimal multi-tenant chatbot platform: users register and log in, create projects
+("agents"), attach a system prompt to a project, chat with an LLM-backed agent, and
+optionally upload files into a project.
 
-The platform allows multiple users to create independent AI agents (Projects), assign custom system prompts, maintain conversation history, and optionally upload project documents. The architecture emphasizes modularity, security, and extensibility while remaining lightweight enough for rapid deployment.
+Built for the Yellow.ai AI Intern take-home assignment.
 
----
+## Stack
 
-## Features
+- **Backend**: FastAPI + SQLAlchemy + SQLite (swap to Postgres by changing one env var)
+- **Auth**: JWT (OAuth2 password flow), bcrypt-hashed passwords
+- **LLM**: OpenRouter Chat Completions API — OpenAI-compatible, so swapping to the
+  OpenAI Responses API or any other provider only touches one file
+- **Frontend**: Vanilla HTML/CSS/JS, no build step, no framework
 
-- JWT Authentication (OAuth2 Password Flow)
-- Multi-user Architecture
-- Multi-project AI Agents
-- Custom System Prompt Management
-- Persistent Conversation History
-- File Upload Support
-- Provider-Agnostic LLM Integration
-- RESTful API Design
-- Ownership-Based Authorization
-- Modular Service Architecture
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|--------|------------|
-| Backend | FastAPI |
-| ORM | SQLAlchemy |
-| Database | SQLite (Postgres Ready) |
-| Authentication | JWT + bcrypt |
-| LLM Provider | OpenRouter |
-| Frontend | Vanilla HTML, CSS & JavaScript |
-| Deployment | Render + Vercel |
-
----
-
-# System Architecture
-
-```
-                Static Client (Vanilla JS)
-
-                       HTTP / REST
-                      JWT Authentication
-
-                           │
-                           ▼
-
-                  FastAPI Backend (REST API)
-
-        ┌──────────────┬──────────────┬───────────────┐
-        │              │              │
-        ▼              ▼              ▼
-
- SQLAlchemy ORM    File Storage    LLM Service Layer
-(SQLite/Postgres)  (Uploads)       (Vendor Adapter)
-
-                                      │
-                                      ▼
-
-                              OpenRouter API
-```
-
----
-
-## Project Structure
+## Project structure
 
 ```
 chatbot-platform/
-
-├── backend
-│   ├── app
-│   │   ├── routers
-│   │   │   ├── auth.py
-│   │   │   ├── chat.py
-│   │   │   ├── files.py
-│   │   │   ├── projects.py
-│   │   │   └── prompts.py
-│   │   │
-│   │   ├── services
-│   │   │   └── llm_service.py
-│   │   │
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── deps.py
-│   │   ├── models.py
-│   │   ├── schemas.py
-│   │   ├── security.py
-│   │   └── main.py
-│   │
+├── backend/
+│   ├── app/
+│   │   ├── main.py           # FastAPI app, CORS, router registration
+│   │   ├── config.py         # env-driven settings
+│   │   ├── database.py       # SQLAlchemy engine/session
+│   │   ├── models.py         # User, Project, Prompt, Message, UploadedFile
+│   │   ├── schemas.py        # Pydantic request/response models
+│   │   ├── security.py       # password hashing + JWT
+│   │   ├── deps.py           # get_db, get_current_user, get_owned_project
+│   │   ├── routers/
+│   │   │   ├── auth.py       # POST /auth/register, /auth/login
+│   │   │   ├── projects.py   # /projects
+│   │   │   ├── prompts.py    # /projects/{id}/prompts
+│   │   │   ├── chat.py       # /projects/{id}/chat, /projects/{id}/messages
+│   │   │   └── files.py      # /projects/{id}/files
+│   │   └── services/
+│   │       └── llm_service.py  # the one file that talks to the LLM provider
 │   ├── requirements.txt
 │   └── .env.example
-│
-├── frontend
+├── frontend/
 │   ├── index.html
 │   ├── app.js
 │   └── style.css
-│
 ├── ARCHITECTURE.md
 └── README.md
 ```
 
----
+## Setup
 
-# Core Design
-
-## Authentication
-
-Authentication uses OAuth2 Password Flow with JWT Bearer Tokens.
-
-Passwords are hashed using **bcrypt** before storage.
-
-Every protected endpoint resolves the authenticated user through a shared dependency.
-
----
-
-## Multi-Tenant Architecture
-
-Each user owns one or more **Projects**.
-
-Each Project represents an independent AI Agent.
-
-Every Project owns:
-
-- Prompts
-- Messages
-- Uploaded Files
-
-Ownership is enforced centrally using `get_owned_project()`.
-
-This prevents users from accessing resources belonging to other users.
-
----
-
-## Prompt Management
-
-Instead of storing one prompt directly inside a project, prompts are maintained as a dedicated table.
-
-Benefits include:
-
-- Multiple prompts per project
-- Active prompt switching
-- Prompt versioning support
-- Future A/B testing
-
-Only one prompt is marked active and becomes the system prompt supplied to the LLM.
-
----
-
-## Chat Flow
-
-1. User submits a message.
-
-2. Backend stores the user message.
-
-3. Active system prompt is retrieved.
-
-4. Previous conversation history is loaded.
-
-5. Prompt + History are assembled.
-
-6. LLM Service calls OpenRouter.
-
-7. Assistant response is stored.
-
-8. Response is returned to the client.
-
----
-
-## LLM Abstraction
-
-The application never communicates with OpenRouter directly.
-
-All provider-specific logic lives inside:
-
-```
-
-backend/app/services/llm_service.py
-
-```
-
-Every API route simply calls:
-
-```
-
-get_chat_completion()
-
-```
-
-Changing providers (OpenAI, Anthropic, Gemini, etc.) requires modifying only this module.
-
----
-
-## Authorization
-
-Authorization logic is centralized inside:
-
-```
-
-get_owned_project()
-
-```
-
-Rather than repeating ownership validation across routes, every project-scoped endpoint automatically receives authorization checks through dependency injection.
-
-When a project does not belong to the authenticated user, the API returns **404 Not Found** instead of **403 Forbidden**, preventing information leakage.
-
----
-
-## File Uploads
-
-Projects support optional file uploads.
-
-Uploaded files are stored locally while metadata is persisted inside the database.
-
-The schema already includes an `openai_file_id` field for future integration with the OpenAI Files API.
-
----
-
-# Setup
-
-## Backend
+### 1. Backend
 
 ```bash
 cd backend
-
 python -m venv venv
-
-source venv/bin/activate
-# Windows
-venv\Scripts\activate
-
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
 cp .env.example .env
+```
 
+Edit `.env` and set `OPENROUTER_API_KEY` (free key at https://openrouter.ai/keys).
+Without it, the chat endpoint still works end-to-end but returns a placeholder
+string instead of a real model reply — useful for testing the rest of the app
+without burning API credits.
+
+```bash
 uvicorn app.main:app --reload
 ```
 
----
+Backend runs at `http://localhost:8000`. Interactive API docs (Swagger UI) at
+`http://localhost:8000/docs` — this is the fastest way to poke every endpoint
+without touching the frontend.
 
-## Frontend
+### 2. Frontend
 
 ```bash
 cd frontend
-
 python -m http.server 5500
 ```
 
-Open
+Open `http://localhost:5500` in your browser. By default it calls
+`http://localhost:8000`. To point at a deployed backend, add this before the
+`app.js` script tag in `index.html`:
 
+```html
+<script>window.API_BASE_URL = "https://your-deployed-backend.com";</script>
 ```
-http://localhost:5500
-```
 
----
+## Using it
 
-## Environment Variables
+1. Register an account, then log in.
+2. Create a project — this is your "agent."
+3. Type a system prompt and click **Save & Activate** — this becomes the
+   agent's persona/instructions for every message in that project.
+4. Chat. Every user message and assistant reply is persisted per project, so
+   reloading the page keeps your history.
+5. *(Optional)* Upload a file into the project via the file picker.
 
-| Variable | Purpose |
-|------------|----------|
-| DATABASE_URL | Database Connection |
-| JWT_SECRET_KEY | JWT Signing Secret |
-| JWT_ALGORITHM | Signing Algorithm |
-| ACCESS_TOKEN_EXPIRE_MINUTES | Token Lifetime |
-| OPENROUTER_API_KEY | OpenRouter API Key |
-| OPENROUTER_MODEL | Selected Model |
-| OPENAI_API_KEY | Future File API Integration |
-| UPLOAD_DIR | Upload Storage |
+## Environment variables
 
----
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | SQLAlchemy connection string. Defaults to local SQLite; set to a Postgres URL for production. |
+| `JWT_SECRET_KEY` | Secret used to sign JWTs. **Change this before deploying anywhere real.** |
+| `JWT_ALGORITHM` | JWT signing algorithm (default `HS256`). |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token lifetime in minutes. |
+| `OPENROUTER_API_KEY` | Your OpenRouter API key. |
+| `OPENROUTER_MODEL` | Model to route to, e.g. `openai/gpt-4o-mini`. |
+| `OPENAI_API_KEY` | Only needed if you wire up the OpenAI Files API stretch goal. |
+| `UPLOAD_DIR` | Local folder for uploaded files. |
 
-# Future Improvements
+## Deploying (for the hosted demo link)
 
-- Server-Sent Events (Streaming Responses)
-- PostgreSQL Production Deployment
-- Rate Limiting
-- Team Workspaces
-- Vector Database Integration
-- Retrieval-Augmented Generation (RAG)
-- OpenAI Files API Integration
-- Automated Testing (Pytest)
+- **Backend**: Render or Railway — push this repo, set the root directory to
+  `backend`, set the env vars from the table above in the dashboard, start
+  command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Add a managed
+  Postgres instance and point `DATABASE_URL` at it for anything beyond a demo.
+- **Frontend**: any static host (Netlify, Vercel, GitHub Pages, or Render
+  static site) — set `window.API_BASE_URL` to your deployed backend's URL.
 
----
-
-# Deployment
-
-Backend deployed on **Render**
-
-Frontend deployed on **Vercel**
-
-This separation allows the backend to run as a persistent Python service while the frontend benefits from static CDN hosting.
-
----
-
-# Engineering Decisions
-
-- Modular LLM Provider Layer
-- Stateless JWT Authentication
-- Shared Authorization Dependency
-- Provider-Agnostic Architecture
-- Prompt Version Ready Schema
-- PostgreSQL-Compatible Data Layer
-- Clear Separation of Presentation, Business Logic and Persistence Layers
-
----
-
-For detailed implementation decisions and design rationale, see **ARCHITECTURE.md**.
+See `ARCHITECTURE.md` for design rationale and known limitations.
