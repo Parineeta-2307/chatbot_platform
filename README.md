@@ -104,17 +104,9 @@ Open `http://localhost:5500` in your browser. By default it calls
 | `JWT_ALGORITHM` | JWT signing algorithm (default `HS256`). |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Token lifetime in minutes. |
 | `OPENROUTER_API_KEY` | Your OpenRouter API key. |
-| `OPENROUTER_MODEL` | Model to route to, e.g. `openai/gpt-4o-mini`. |
+| `OPENROUTER_MODEL` | Model to route to, e.g. `nvidia/nemotron-3-ultra-550b-a55b:free`. |
 | `OPENAI_API_KEY` | Only needed if you wire up the OpenAI Files API stretch goal. |
 | `UPLOAD_DIR` | Local folder for uploaded files. |
 
-## Deploying (for the hosted demo link)
-
-- **Backend**: Render or Railway — push this repo, set the root directory to
-  `backend`, set the env vars from the table above in the dashboard, start
-  command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Add a managed
-  Postgres instance and point `DATABASE_URL` at it for anything beyond a demo.
-- **Frontend**: any static host (Netlify, Vercel, GitHub Pages, or Render
-  static site) — set `window.API_BASE_URL` to your deployed backend's URL.
 
 See `ARCHITECTURE.md` for design rationale and known limitations.
