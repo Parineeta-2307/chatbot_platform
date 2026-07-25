@@ -1,253 +1,308 @@
-# Multi-Tenant Chatbot Platform
+# Multi-Tenant AI Chatbot Platform
 
-A lightweight, multi-tenant chatbot platform that allows users to register, create autonomous LLM agents ("projects"), attach custom system prompts, persist chat history, and attach context files.
+A production-inspired chatbot platform built with **FastAPI**, **JWT Authentication**, **SQLAlchemy**, and **OpenRouter**.
 
+The platform allows multiple users to create independent AI agents (Projects), assign custom system prompts, maintain conversation history, and optionally upload project documents. The architecture emphasizes modularity, security, and extensibility while remaining lightweight enough for rapid deployment.
 
-## Key Features & Architecture Highlights
+---
 
-* **Multi-Tenant Isolation:** Resource ownership enforced at the dependency level (`get_owned_project`); non-owned resources return `404 Not Found` to prevent account enumeration.
-* **Modular LLM Integration:** Isolated provider logic in `llm_service.py` supporting OpenRouter, allowing standard OpenAI-compatible API migration with zero core backend changes.
-* **Persistent Conversation Context:** Stores per-project message history in DB and auto-assembles system prompts + historical context on every turn.
-* **Production-Ready DB Pattern:** Driven by SQLAlchemy ORM; defaults to zero-config SQLite, seamlessly swappable to PostgreSQL via environment variables.
-* **Stateless Auth:** OAuth2 password flow issuing signed JWT tokens (`HS256`) with direct `bcrypt` password hashing.
+## Features
+
+- JWT Authentication (OAuth2 Password Flow)
+- Multi-user Architecture
+- Multi-project AI Agents
+- Custom System Prompt Management
+- Persistent Conversation History
+- File Upload Support
+- Provider-Agnostic LLM Integration
+- RESTful API Design
+- Ownership-Based Authorization
+- Modular Service Architecture
+
+---
 
 ## Tech Stack
 
-| Component | Technology | Rationale |
-| :--- | :--- | :--- |
-| **Backend** | Python 3.10+ / FastAPI | High-performance async REST framework with auto-generated OpenAPI docs. |
-| **ORM / Database** | SQLAlchemy / SQLite (Postgres-ready) | Zero-setup local dev with simple transition to production RDBMS. |
-| **Authentication** | PyJWT / `bcrypt` | Stateless, horizontally scalable token auth with direct salted hashing. |
-| **LLM Provider** | OpenRouter Chat Completions | OpenAI-compatible gateway; fallback/mock support without credits. |
-| **Frontend** | Vanilla HTML5 / CSS3 / ES6 JS | Zero-build, native browser runtime for rapid assignment evaluation. |
+| Layer | Technology |
+|--------|------------|
+| Backend | FastAPI |
+| ORM | SQLAlchemy |
+| Database | SQLite (Postgres Ready) |
+| Authentication | JWT + bcrypt |
+| LLM Provider | OpenRouter |
+| Frontend | Vanilla HTML, CSS & JavaScript |
+| Deployment | Render + Vercel |
 
 ---
 
-## Repository Structure
+# System Architecture
 
-```text
+```
+                Static Client (Vanilla JS)
+
+                       HTTP / REST
+                      JWT Authentication
+
+                           │
+                           ▼
+
+                  FastAPI Backend (REST API)
+
+        ┌──────────────┬──────────────┬───────────────┐
+        │              │              │
+        ▼              ▼              ▼
+
+ SQLAlchemy ORM    File Storage    LLM Service Layer
+(SQLite/Postgres)  (Uploads)       (Vendor Adapter)
+
+                                      │
+                                      ▼
+
+                              OpenRouter API
+```
+
+---
+
+## Project Structure
+
+```
 chatbot-platform/
-├── backend/
-│   ├── app/
-│   │   ├── main.py           # FastAPI initialization, CORS, router inclusion
-│   │   ├── config.py         # BaseSettings configuration via pydantic-settings
-│   │   ├── database.py       # Engine, sessionmaker, and DB lifecycle setup
-│   │   ├── models.py         # SQLAlchemy ORM models (User, Project, Prompt, Message, UploadedFile)
-│   │   ├── schemas.py        # Pydantic request/response validation schemas
-│   │   ├── security.py       # Cryptographic operations (bcrypt hash, JWT issuance/validation)
-│   │   ├── deps.py           # Dependency injection (get_db, get_current_user, get_owned_project)
-│   │   ├── routers/
-│   │   │   ├── auth.py       # POST /auth/register, POST /auth/login
-│   │   │   ├── projects.py   # CRUD /projects
-│   │   │   ├── prompts.py    # CRUD /projects/{id}/prompts
-│   │   │   ├── chat.py       # POST /projects/{id}/chat, GET /projects/{id}/messages
-│   │   │   └── files.py      # POST /projects/{id}/files
-│   │   └── services/
-│   │       └── llm_service.py # Vendor-agnostic LLM interface wrapper
+
+├── backend
+│   ├── app
+│   │   ├── routers
+│   │   │   ├── auth.py
+│   │   │   ├── chat.py
+│   │   │   ├── files.py
+│   │   │   ├── projects.py
+│   │   │   └── prompts.py
+│   │   │
+│   │   ├── services
+│   │   │   └── llm_service.py
+│   │   │
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── deps.py
+│   │   ├── models.py
+│   │   ├── schemas.py
+│   │   ├── security.py
+│   │   └── main.py
+│   │
 │   ├── requirements.txt
 │   └── .env.example
-├── frontend/
+│
+├── frontend
 │   ├── index.html
 │   ├── app.js
 │   └── style.css
+│
 ├── ARCHITECTURE.md
 └── README.md
-
 ```
 
 ---
 
-## Quick Start Guide
+# Core Design
 
-### 1. Backend Setup
+## Authentication
+
+Authentication uses OAuth2 Password Flow with JWT Bearer Tokens.
+
+Passwords are hashed using **bcrypt** before storage.
+
+Every protected endpoint resolves the authenticated user through a shared dependency.
+
+---
+
+## Multi-Tenant Architecture
+
+Each user owns one or more **Projects**.
+
+Each Project represents an independent AI Agent.
+
+Every Project owns:
+
+- Prompts
+- Messages
+- Uploaded Files
+
+Ownership is enforced centrally using `get_owned_project()`.
+
+This prevents users from accessing resources belonging to other users.
+
+---
+
+## Prompt Management
+
+Instead of storing one prompt directly inside a project, prompts are maintained as a dedicated table.
+
+Benefits include:
+
+- Multiple prompts per project
+- Active prompt switching
+- Prompt versioning support
+- Future A/B testing
+
+Only one prompt is marked active and becomes the system prompt supplied to the LLM.
+
+---
+
+## Chat Flow
+
+1. User submits a message.
+
+2. Backend stores the user message.
+
+3. Active system prompt is retrieved.
+
+4. Previous conversation history is loaded.
+
+5. Prompt + History are assembled.
+
+6. LLM Service calls OpenRouter.
+
+7. Assistant response is stored.
+
+8. Response is returned to the client.
+
+---
+
+## LLM Abstraction
+
+The application never communicates with OpenRouter directly.
+
+All provider-specific logic lives inside:
+
+```
+
+backend/app/services/llm_service.py
+
+```
+
+Every API route simply calls:
+
+```
+
+get_chat_completion()
+
+```
+
+Changing providers (OpenAI, Anthropic, Gemini, etc.) requires modifying only this module.
+
+---
+
+## Authorization
+
+Authorization logic is centralized inside:
+
+```
+
+get_owned_project()
+
+```
+
+Rather than repeating ownership validation across routes, every project-scoped endpoint automatically receives authorization checks through dependency injection.
+
+When a project does not belong to the authenticated user, the API returns **404 Not Found** instead of **403 Forbidden**, preventing information leakage.
+
+---
+
+## File Uploads
+
+Projects support optional file uploads.
+
+Uploaded files are stored locally while metadata is persisted inside the database.
+
+The schema already includes an `openai_file_id` field for future integration with the OpenAI Files API.
+
+---
+
+# Setup
+
+## Backend
 
 ```bash
-# Navigate to backend directory
 cd backend
 
-# Create and activate virtual environment
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
 
-# Install dependencies
+source venv/bin/activate
+# Windows
+venv\Scripts\activate
+
 pip install -r requirements.txt
 
-# Configure environment variables
 cp .env.example .env
 
-```
-
-> **Note on LLM Execution:** Configure `OPENROUTER_API_KEY` in `.env`. If unconfigured, the application gracefully degrades to mock responses, enabling full offline evaluation of auth, persistence, and CRUD flows.
-
-```bash
-# Launch FastAPI application server
 uvicorn app.main:app --reload
-
 ```
-
-* **API Base URL:** `http://localhost:8000`
-* **Interactive API Docs (Swagger UI):** `http://localhost:8000/docs`
 
 ---
 
-### 2. Frontend Setup
+## Frontend
 
 ```bash
 cd frontend
+
 python -m http.server 5500
-
 ```
 
-Access the UI at `http://localhost:5500`.
+Open
 
-To configure a custom API target (e.g., deployed backend), inject `window.API_BASE_URL` in `index.html`:
-
-```html
-<script>window.API_BASE_URL = "[https://your-api-domain.com](https://your-api-domain.com)";</script>
-
+```
+http://localhost:5500
 ```
 
 ---
 
-## Quick Evaluation Flow
+## Environment Variables
 
-For rapid end-to-end functional testing via Swagger UI (`http://localhost:8000/docs`):
-
-1. **User Auth:** Execute `POST /auth/register` followed by `POST /auth/login` to obtain an Access Token. Authorize via the Swagger UI `Authorize` button.
-2. **Agent Creation:** Execute `POST /projects` to instantiate an agent workspace.
-3. **Prompt Configuration:** Execute `POST /projects/{id}/prompts` with `{"is_active": true}` to set agent persona rules.
-4. **Execution & Context:** Execute `POST /projects/{id}/chat` to verify LLM response generation and context retention.
-5. **Multi-Tenant Isolation Check:** Register a second account, attempt to query the first user's project ID (`GET /projects/{id}`), and confirm a `404 Not Found` response.
-
----
-
-## Environment Configuration Parameters
-
-| Variable | Type | Default Value | Description |
-| --- | --- | --- | --- |
-| `DATABASE_URL` | String | `sqlite:///./app.db` | SQLAlchemy connection URI (e.g., `postgresql://user:pass@host/db`). |
-| `JWT_SECRET_KEY` | String | *(Required)* | Cryptographic secret for signing JWT tokens. |
-| `JWT_ALGORITHM` | String | `HS256` | HMAC signing algorithm for tokens. |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Integer | `60` | Token validity lifespan. |
-| `OPENROUTER_API_KEY` | String | `""` | API Key for OpenRouter API requests. |
-| `OPENROUTER_MODEL` | String | `nvidia/nemotron-3-ultra-550b-a55b:free` | Target model for completion generation. |
-| `UPLOAD_DIR` | String | `./uploads` | Disk location for uploaded context files. |
-
-```
+| Variable | Purpose |
+|------------|----------|
+| DATABASE_URL | Database Connection |
+| JWT_SECRET_KEY | JWT Signing Secret |
+| JWT_ALGORITHM | Signing Algorithm |
+| ACCESS_TOKEN_EXPIRE_MINUTES | Token Lifetime |
+| OPENROUTER_API_KEY | OpenRouter API Key |
+| OPENROUTER_MODEL | Selected Model |
+| OPENAI_API_KEY | Future File API Integration |
+| UPLOAD_DIR | Upload Storage |
 
 ---
 
-# Revised ARCHITECTURE.md
+# Future Improvements
 
-```markdown
-# Platform Architecture & Engineering Decisions
-
-## System Overview
-
-The platform operates as a multi-tenant RESTful backend service built with FastAPI, backing a static web client.
-
-Data Topology:
-`User` ──1:N──> `Project` (Agent Workspace) ──1:N──> `{ Prompt, Message, UploadedFile }`
-
-
-```
-
-┌─────────────────┐       HTTP / REST       ┌────────────────────────┐
-│  Static Client  │ <───────────────────> │    FastAPI Service     │
-│ (Vanilla JS UI) │      (JWT Auth)         │                        │
-└─────────────────┘                         └───────────┬────────────┘
-│
-┌──────────────────────────────┼──────────────────────────────┐
-▼                              ▼                              ▼
-┌─────────────────────┐        ┌────────────────────┐        ┌──────────────────────┐
-│  SQLAlchemy ORM     │        │ Local File Storage │        │   llm_service.py     │
-│  (SQLite/Postgres)  │        │   (Uploads Dir)    │        │ (OpenRouter Adapter) │
-└─────────────────────┘        └────────────────────┘        └───────────┬──────────┘
-│
-▼
-┌──────────────────────┐
-│ External LLM Provider│
-│ (OpenRouter API)     │
-└──────────────────────┘
-
-```
+- Server-Sent Events (Streaming Responses)
+- PostgreSQL Production Deployment
+- Rate Limiting
+- Team Workspaces
+- Vector Database Integration
+- Retrieval-Augmented Generation (RAG)
+- OpenAI Files API Integration
+- Automated Testing (Pytest)
 
 ---
 
-## Domain Model & Schema Design
+# Deployment
 
-* **User:** Handles authentication context, password verification, and project ownership boundaries.
-* **Project:** Serves as the primary multi-tenant boundary (Agent Workspace). All sub-resources belong directly to a single project.
-* **Prompt:** Stored in a separate table rather than flat columns on `Project`. Supports multiple prompt templates per project with an `is_active` boolean flag.
-  * *Why this matters:* Enables prompt history tracking and A/B testing support without requiring migration scripts.
-* **Message:** Stores full chat logs tagged by role (`user` / `assistant`). Used both for UI restoration and reconstructing full context arrays during LLM inference.
-* **UploadedFile:** Tracks metadata for disk-stored uploads attached to projects. Includes an explicit `openai_file_id` column to support downstream retrieval-augmented generation (RAG) or vector store integrations.
+Backend deployed on **Render**
 
----
+Frontend deployed on **Vercel**
 
-## Security & Authorization Model
-
-### 1. Resource Isolation (`get_owned_project`)
-Authorization checks are decoupled from application routes using FastAPI's dependency injection (`deps.get_owned_project`).
-
-* **Resource Enumeration Prevention:** If User A requests a project owned by User B, the service returns `404 Not Found` instead of `403 Forbidden`.
-  * *Why this matters:* Prevents malicious actors from probing valid sequential integer IDs to detect resource existence.
-
-### 2. Password Hashing Strategy
-* Passwords are hashed using `bcrypt` directly rather than through abstraction wrappers like `passlib`.
-  * *Why this matters:* Avoids execution runtime bugs associated with legacy `passlib` unmaintained wrappers against recent `bcrypt` release changes.
+This separation allows the backend to run as a persistent Python service while the frontend benefits from static CDN hosting.
 
 ---
 
-## Runtime Execution Flow: Agent Chat Pipeline
+# Engineering Decisions
 
-
-```
-
-[Client]                [Chat Router]            [get_owned_project]           [DB]              [llm_service]           [OpenRouter]
-│                         │                            │                     │                      │                         │
-│─ POST /projects/id/chat─>│                            │                     │                      │                         │
-│                         │── Verify Ownership ───────>│                     │                      │                         │
-│                         │                            │── Fetch Project ───>│                      │                         │
-│                         │                            │<── Return Project ──│                      │                         │
-│                         │<── Authorization OK ───────│                     │                      │                         │
-│                         │                                                  │                      │                         │
-│                         │── Persist User Message ─────────────────────────>│                      │                         │
-│                         │── Retrieve [Active Prompt + Message History] ───>│                      │                         │
-│                         │<── Context Payload ──────────────────────────────│                      │                         │
-│                         │                                                                         │                         │
-│                         │── Request Completion (System Prompt + History) ────────────────────────>│                         │
-│                         │                                                                         │── POST /chat/completions─>│
-│                         │                                                                         │<── Completion Response ─│
-│                         │<── Assistant Message String ────────────────────────────────────────────│                         │
-│                         │                                                  │                                                │
-│                         │── Persist Assistant Message ────────────────────>│                                                │
-│<─ 200 OK + Payload ─────│                                                  │                                                │
-
-```
+- Modular LLM Provider Layer
+- Stateless JWT Authentication
+- Shared Authorization Dependency
+- Provider-Agnostic Architecture
+- Prompt Version Ready Schema
+- PostgreSQL-Compatible Data Layer
+- Clear Separation of Presentation, Business Logic and Persistence Layers
 
 ---
 
-## Architectural Trade-offs & Engineering Justifications
-
-### 1. Database Abstraction via ORM
-* **Trade-off:** SQLite default deployment vs PostgreSQL.
-* **Justification:** SQLite eliminates setup friction for local assessment. Using SQLAlchemy abstractions ensures transitioning to a production-grade PostgreSQL cluster requires changing only the `DATABASE_URL` environment string.
-
-### 2. Isolated Vendor Integration Module
-* **Trade-off:** Wrapper abstraction over direct SDK imports across routes.
-* **Justification:** All external model calls are concentrated within `app/services/llm_service.py`. Swapping providers (e.g., OpenRouter $\rightarrow$ Direct OpenAI API / Azure OpenAI) requires modifying code in only one location.
-
-### 3. Synchronous ORM Pattern
-* **Trade-off:** Sync SQLAlchemy drivers vs Async engines (`asyncpg`).
-* **Justification:** Keeps database interaction simple and explicit for single-instance operations. The async boundary required for high concurrency is cleanly isolated within FastAPI routes and outbound HTTP clients (`httpx`), keeping future migration contained.
-
----
-
-## Known Trade-offs & Future Enhancements
-
-* **Response Streaming (Server-Sent Events / SSE):** The current chat implementation waits for the complete response payload from the LLM. Production deployments should implement token streaming over SSE for lower Time-To-First-Token (TTFT).
-* **Rate Limiting & Quota Management:** Production architectures require token-bucket rate limiting (e.g., via `slowapi` or Redis) to mitigate API abuse.
-* **Vector Indexing & RAG:** Uploaded files currently reside on local disk. Future iterations will process uploads via chunking pipelines into vector databases for Retrieval-Augmented Generation (RAG).
-
-```
+For detailed implementation decisions and design rationale, see **ARCHITECTURE.md**.
