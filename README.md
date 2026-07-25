@@ -1,34 +1,7 @@
-Here is a thorough code review and documentation overhaul from the perspective of a Senior Software Engineer / Hiring Manager.
-
-### Hiring Manager Review & Critique
-
-1. **What Stands Out Positively:**
-* **Explicit Ownership Isolation:** Using `get_owned_project` dependency to return `404` instead of `403` prevents **resource enumeration vulnerabilities**, which is a strong security practice.
-* **Clean Abstraction:** Encapsulating the OpenRouter integration inside `llm_service.py` gives the backend a single point of change for model provider swapping.
-* **Realistic DB Migration Path:** Storing SQLite locally while maintaining zero-code-change compatibility with PostgreSQL via SQLAlchemy `DATABASE_URL`.
-* **Prompt Management:** Treating prompts as an independent table rather than a single column on the Project table allows for clean versioning and runtime context assembly.
-
-
-2. **Key Improvements Made:**
-* **Production & Security Context:** Explicitly tagged trade-offs (e.g., Stateless JWT vs. Server-side Sessions, Direct `bcrypt` over legacy `passlib`).
-* **"Why This Matters" Callouts:** Added explicit engineering justifications so reviewers immediately recognize senior-level intentionality.
-* **Recruiter & Evaluator Friendliness:** Added a **Quick Evaluation Flow** (curl commands / Swagger UI sequence) for fast grading.
-* **Visual Hierarchy:** Re-structured markdown with clear headers, semantic lists, and concise tables.
-
-
-
----
-
-# Revised README.md
-
-```markdown
 # Multi-Tenant Chatbot Platform
 
 A lightweight, multi-tenant chatbot platform that allows users to register, create autonomous LLM agents ("projects"), attach custom system prompts, persist chat history, and attach context files.
 
-*Built for the **Yellow.ai AI Engineer Intern** take-home assignment.*
-
----
 
 ## Key Features & Architecture Highlights
 
@@ -37,8 +10,6 @@ A lightweight, multi-tenant chatbot platform that allows users to register, crea
 * **Persistent Conversation Context:** Stores per-project message history in DB and auto-assembles system prompts + historical context on every turn.
 * **Production-Ready DB Pattern:** Driven by SQLAlchemy ORM; defaults to zero-config SQLite, seamlessly swappable to PostgreSQL via environment variables.
 * **Stateless Auth:** OAuth2 password flow issuing signed JWT tokens (`HS256`) with direct `bcrypt` password hashing.
-
----
 
 ## Tech Stack
 
