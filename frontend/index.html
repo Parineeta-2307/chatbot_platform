@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Chatbot Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="auth-screen" class="screen">
+    <div class="card">
+      <h1>Chatbot Platform</h1>
+      <div class="tabs">
+        <button id="tab-login" class="tab active" type="button">Login</button>
+        <button id="tab-register" class="tab" type="button">Register</button>
+      </div>
+      <form id="auth-form">
+        <input type="email" id="email" placeholder="Email" required />
+        <input type="password" id="password" placeholder="Password" required />
+        <button type="submit" id="auth-submit">Login</button>
+      </form>
+      <p id="auth-error" class="error"></p>
+    </div>
+  </div>
+
+  <div id="app-screen" class="screen hidden">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>Projects</h2>
+        <div class="sidebar-header-actions">
+          <button id="help-btn" type="button" class="ghost-btn" title="Replay guide">?</button>
+          <button id="logout-btn" type="button" class="ghost-btn">Logout</button>
+        </div>
+      </div>
+      <form id="project-form">
+        <input type="text" id="project-name" placeholder="New project name" required />
+        <button type="submit">+ Create</button>
+      </form>
+      <ul id="project-list"></ul>
+    </aside>
+
+    <main class="main">
+      <div id="no-project" class="empty-state">
+        <p>Select or create a project to start chatting.</p>
+      </div>
+
+      <div id="project-view" class="hidden">
+        <header class="project-header">
+          <h2 id="project-title"></h2>
+          <div class="header-actions">
+            <input type="file" id="file-input" />
+            <button id="upload-btn" type="button">Upload File</button>
+          </div>
+        </header>
+
+        <section class="prompt-section">
+          <p class="panel-label">System Prompt</p>
+          <form id="prompt-form">
+            <textarea id="prompt-content" placeholder="e.g. You are a helpful support agent for..." rows="2"></textarea>
+            <button type="submit">Save &amp; Activate</button>
+          </form>
+        </section>
+
+        <div class="flow-indicator">↓ active prompt feeds every reply below</div>
+
+        <section class="chat-section">
+          <div id="chat-window"></div>
+          <form id="chat-form">
+            <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" required />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="tour.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
