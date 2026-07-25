@@ -4,7 +4,6 @@ A minimal multi-tenant chatbot platform: users register and log in, create proje
 ("agents"), attach a system prompt to a project, chat with an LLM-backed agent, and
 optionally upload files into a project.
 
-Built for the Yellow.ai AI Intern take-home assignment.
 
 ## Stack
 
