@@ -2,79 +2,236 @@
 
 ## Overview
 
-A single FastAPI service exposes a REST API consumed by a static frontend.
-Data is modeled as: `User → Project (agent) → {Prompt, Message, UploadedFile}`.
-Every project is scoped to its owning user, and every query filters by
-`owner_id` (via the `get_owned_project` dependency), so one user can never
-read or write another user's data — verified in testing: requesting another
-user's project returns 404, not 403, so existence isn't leaked either.
+The application follows a **multi-tenant architecture** built around a single FastAPI backend exposing a REST API consumed by a static frontend.
 
-## Auth
+The core data hierarchy is:
 
-OAuth2 password flow issuing a signed JWT (HS256) on login. The token is sent
-as a Bearer header on every subsequent request and resolved back to a `User`
-row by the `get_current_user` dependency. Passwords are hashed with bcrypt
-directly (not through passlib, which has a known compatibility break with
-recent bcrypt releases) — plaintext is never stored or logged.
+```
+User
+ └── Project (Agent)
+      ├── Prompt(s)
+      ├── Message History
+      └── Uploaded Files
+```
 
-## Data model
+Each project belongs to exactly one authenticated user.
 
-- **User** — account + credentials.
-- **Project** — a named agent, owned by exactly one user.
-- **Prompt** — one or more prompt templates per project; the one flagged
-  `is_active` is used as the system prompt for that project's conversations.
-  Keeping prompts as their own table (rather than a single field on Project)
-  is what "storing and associating multiple prompts with a project" calls
-  for, and it leaves room for prompt versioning or A/B testing later without
-  a schema change.
-- **Message** — full chat history per project (`role`: user/assistant), used
-  both to render the chat window and to reconstruct the conversation context
-  sent to the LLM on every turn.
-- **UploadedFile** — metadata for files attached to a project. The file
-  itself is stored on local disk (swap for S3/GCS in production) with an
-  optional `openai_file_id` column reserved for wiring up the OpenAI Files
-  API.
+Ownership is enforced through the shared `get_owned_project()` dependency, ensuring that every project-scoped request is automatically filtered by `owner_id`.
 
-## Chat flow
+As an additional security measure, unauthorized access returns **404 Not Found** instead of **403 Forbidden**, preventing attackers from determining whether another user's project exists.
 
-1. Client `POST`s a message to `/projects/{id}/chat`.
-2. Server persists the user message.
-3. Server assembles `[active system prompt] + [full message history]` and
-   calls the LLM service.
-4. `llm_service.py` hits OpenRouter's OpenAI-compatible `/chat/completions`
-   endpoint.
-5. Server persists and returns the assistant reply.
+---
 
-## Why these tradeoffs
+## Authentication
 
-- **SQLite by default** — zero setup for local dev and the demo. Moving to
-  Postgres is a one-line change to `DATABASE_URL` since SQLAlchemy abstracts
-  the rest; this is the scalability lever the brief asks about.
-- **LLM calls isolated in one module** — `llm_service.py` is the only file
-  that knows OpenRouter exists. Switching to the OpenAI Responses API, or
-  adding a fallback provider, is a change in one place — this is the
-  extensibility point the brief calls out.
-- **Stateless JWT auth** — no server-side session store, so the API scales
-  horizontally without sticky sessions.
-- **Synchronous SQLAlchemy** rather than async — for a single-service demo
-  at this scope, this is simpler to reason about and debug. The boundary
-  that would need to become async under real load is isolated to
-  `database.py` and the LLM HTTP call, so it's a contained change later.
-- **Ownership check as a shared dependency** (`get_owned_project`) rather
-  than repeated in every route — every project-scoped endpoint gets the
-  same access-control guarantee for free, and it's the single place to
-  change if the authorization model ever grows (e.g. shared/team projects).
+Authentication uses **OAuth2 Password Flow** with **JWT (HS256)**.
 
-## Known limitations / what I'd add next
+Authentication flow:
 
-- No streaming responses — the LLM call is synchronous. A production version
-  would stream tokens over SSE or a WebSocket for lower perceived latency.
-- No rate limiting or per-user usage quotas.
-- File uploads are stored locally and tracked in the DB, but not yet
-  forwarded to the OpenAI Files API (the brief's stretch goal) — the
-  `openai_file_id` column is already there for it.
-- No automated test suite given the scope of this exercise; every endpoint
-  was exercised manually end-to-end (register → login → create project →
-  set active prompt → chat → view history → upload file → cross-user
-  isolation check). `pytest` + `httpx.AsyncClient` would be the natural next
-  addition.
+1. User logs in with email and password.
+2. The server issues a signed JWT.
+3. The frontend stores the token.
+4. Every protected request includes the token as a Bearer token.
+5. `get_current_user()` resolves the authenticated user before processing the request.
+
+Passwords are hashed using **bcrypt** before storage.
+
+Plaintext passwords are never stored or logged.
+
+---
+
+## Data Model
+
+### User
+
+Represents an authenticated account.
+
+Stores:
+
+- Email
+- Password hash
+- Owned projects
+
+---
+
+### Project
+
+Represents an independent AI agent.
+
+Each project belongs to exactly one user and owns:
+
+- Prompts
+- Chat history
+- Uploaded files
+
+---
+
+### Prompt
+
+Projects may contain multiple prompt templates.
+
+Only the prompt marked `is_active` is used as the system prompt for conversations.
+
+Separating prompts into their own table enables future features such as:
+
+- Prompt versioning
+- Prompt history
+- A/B testing
+
+without requiring database schema changes.
+
+---
+
+### Message
+
+Stores complete conversation history.
+
+Each record contains:
+
+- role (user / assistant)
+- content
+- timestamp
+
+The stored history is used both for rendering the chat UI and reconstructing conversation context for every LLM request.
+
+---
+
+### UploadedFile
+
+Stores metadata for files attached to a project.
+
+The physical file is stored locally.
+
+The schema already includes an optional `openai_file_id` column for future integration with the OpenAI Files API.
+
+Production deployments can replace local storage with S3 or Google Cloud Storage without changing the database schema.
+
+---
+
+# Chat Flow
+
+```
+User Message
+      │
+      ▼
+Persist User Message
+      │
+      ▼
+Load Active System Prompt
+      │
+      ▼
+Load Conversation History
+      │
+      ▼
+Build LLM Context
+      │
+      ▼
+llm_service.py
+      │
+      ▼
+OpenRouter Chat Completions API
+      │
+      ▼
+Persist Assistant Response
+      │
+      ▼
+Return Response
+```
+
+---
+
+## Engineering Decisions
+
+### SQLite by Default
+
+SQLite keeps local setup simple while remaining fully compatible with SQLAlchemy.
+
+Migrating to PostgreSQL only requires changing `DATABASE_URL`, making the application production-ready with minimal code changes.
+
+---
+
+### Provider-Agnostic LLM Layer
+
+All LLM communication is isolated inside `llm_service.py`.
+
+No router communicates directly with OpenRouter.
+
+Changing providers (OpenAI, Anthropic, Gemini, etc.) requires modifications in only one module.
+
+---
+
+### Stateless Authentication
+
+JWT authentication eliminates server-side session storage.
+
+This allows the backend to scale horizontally without sticky sessions.
+
+---
+
+### Shared Authorization Dependency
+
+Authorization logic is centralized in `get_owned_project()`.
+
+Instead of repeating ownership validation in every endpoint, every project-scoped route automatically receives the same access-control guarantees.
+
+If authorization requirements change in the future (for example shared workspaces or team projects), only one dependency requires modification.
+
+---
+
+### Synchronous SQLAlchemy
+
+The project intentionally uses synchronous SQLAlchemy.
+
+For a single-service application of this scope, synchronous execution is simpler to understand, debug, and maintain.
+
+The components most likely to become asynchronous under production load are already isolated:
+
+- Database access
+- LLM HTTP requests
+
+making future migration straightforward.
+
+---
+
+# Known Limitations
+
+Current limitations include:
+
+- Responses are generated synchronously (no streaming via SSE or WebSockets).
+- No rate limiting.
+- No per-user usage quotas.
+- Uploaded files are stored locally and are not yet forwarded to the OpenAI Files API.
+- No automated test suite.
+
+---
+
+## Future Improvements
+
+Potential production enhancements include:
+
+- Streaming LLM responses
+- PostgreSQL deployment
+- Rate limiting
+- Usage quotas
+- Team workspaces
+- Retrieval-Augmented Generation (RAG)
+- OpenAI Files API integration
+- Automated testing with `pytest` and `httpx.AsyncClient`
+
+---
+
+## Validation
+
+The application was manually tested end-to-end.
+
+Validated scenarios include:
+
+- User registration
+- Login
+- Project creation
+- Prompt creation
+- Prompt activation
+- Chat interactions
+- Conversation persistence
+- File uploads
+- Cross-user authorization checks
